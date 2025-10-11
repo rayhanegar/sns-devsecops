@@ -1,205 +1,486 @@
-# ✅ Setup Complete - SNS-DSO Project
+# ✅ SNS-DevSecOps Setup Summary
 
-## 🎉 All Fixes Implemented Successfully!
+**Last Updated**: October 11, 2025
 
-### What Was Fixed:
+## � Repository Overview
 
-#### 1. ✅ Created Missing PHP Configuration Files
-- `docker/php/php.dev.ini` - Development configuration with Xdebug
-- `docker/php/php.prod.ini` - Production configuration with OPcache
+This repository (`sns-devsecops`) manages the **infrastructure and deployment** for the Twitah microblogging application. The application code is maintained separately in the `twitah-devsecops` repository by the development team.
 
-#### 2. ✅ Fixed NGINX Configuration
-- Changed `fastcgi_pass` from `app:9000` to `sns-dso-app:9000`
-- Updated `server_name` to `sns.devsecops`
-- Added security headers
-- Added logging configuration
-- Added protection for sensitive files
-
-#### 3. ✅ Updated .gitignore
-- Added `db-data/` for database files
-- Added `redis-data/` for Redis (when enabled)
-- Added `vendor/` for Composer dependencies
-- Added `storage/` directories
-- Added IDE and OS files
-
-#### 4. ✅ Created Complete PHP Application Structure
-```
-src/
-├── config/
-│   └── database.php          # Database connection & initialization
-├── includes/
-│   └── helpers.php            # Helper functions
-├── public/
-│   └── index.php              # Main entry point with routing
-└── composer.json              # Composer configuration
-```
-
-#### 5. ✅ Created Storage Directories
-```
-storage/
-├── logs/        # Application logs
-├── cache/       # Cache files
-└── uploads/     # User uploads
-```
-
-#### 6. ✅ Comprehensive README.md
-- Complete architecture diagram
-- Step-by-step Nginx Proxy Manager setup
-- API endpoint documentation
-- Troubleshooting guide
-- Security considerations
-- Production deployment guide
+### Architecture Approach
+- **Separation of Concerns**: Infrastructure (this repo) vs Application Code (dev repo)
+- **Symlink Integration**: `src/` directory is a symbolic link to the development repository
+- **Immediate Updates**: Changes in dev repo reflect instantly via symlink
+- **Independent Workflows**: Infrastructure and application teams work independently
 
 ---
 
-## 🚀 Next Steps:
+## 📁 Repository Structure
 
-### 1. Ensure proxy-network exists:
-```bash
-docker network create proxy-network --subnet 172.20.0.0/16
-```
-
-### 2. Build and start containers:
-```bash
-docker-compose build
-docker-compose up -d
-```
-
-### 3. Initialize the database:
-```bash
-curl http://172.20.0.30/api/init
-```
-
-### 4. Setup Nginx Proxy Manager:
-- Access NPM interface
-- Add Proxy Host with domain: `sns.devsecops`
-- Forward to: `172.20.0.30:80`
-- See README.md for detailed steps
-
-### 5. Test the application:
-```bash
-# Via IP
-curl http://172.20.0.30/
-
-# Via domain (after NPM setup)
-curl http://sns.devsecops/
-```
-
----
-
-## 📋 Project Structure:
-
+### This Repository (sns-devsecops)
 ```
 sns-devsecops/
-├── docker/
+├── docker/                      # PHP container configurations
 │   └── php/
-│       ├── php.dev.ini       ✨ NEW
-│       └── php.prod.ini      ✨ NEW
-├── nginx/
+│       ├── php.dev.ini          # Development PHP settings
+│       └── php.prod.ini         # Production PHP settings
+├── nginx/                       # NGINX web server config
 │   └── conf.d/
-│       └── default.conf      🔧 FIXED
-├── src/
-│   ├── config/
-│   │   └── database.php      ✨ NEW
-│   ├── includes/
-│   │   └── helpers.php       ✨ NEW
-│   ├── public/
-│   │   └── index.php         ✨ NEW
-│   └── composer.json         ✨ NEW
-├── storage/                  ✨ NEW
-│   ├── logs/
+│       └── default.conf         # Virtual host configuration
+├── database/                    # Database initialization
+│   └── 01-init-twitah.sql      # Schema and seed data
+├── src/ → symlink              # ⚡ Symlink to /home/student/twitah-devsecops/src
+├── storage/                    # Mounted but not actively used
 │   ├── cache/
+│   ├── logs/
 │   └── uploads/
-├── .env
-├── .gitignore                🔧 UPDATED
-├── docker-compose.yaml
-├── Dockerfile
-├── README.md                 ✨ NEW
-└── SETUP_SUMMARY.md          ✨ NEW (this file)
+├── db-data/                    # Database persistence (gitignored)
+├── docker-compose.yaml         # Service orchestration
+├── Dockerfile                  # PHP-FPM 8.2 image
+├── .env                        # Environment variables
+├── .gitignore                  # Git ignore rules
+├── README.md                   # Complete documentation
+├── SETUP_SUMMARY.md            # This file
+└── REFACTOR_SUMMARY.md         # Recent refactor details
+```
+
+### Development Repository (twitah-devsecops)
+```
+twitah-devsecops/
+└── src/                        # ⚡ Application code (symlinked)
+    ├── index.php               # MVC routing entry point
+    ├── config/
+    │   └── config.php          # Database configuration
+    ├── controllers/            # Business logic
+    │   ├── AuthController.php
+    │   ├── TweetController.php
+    │   └── ProfileController.php
+    ├── models/                 # Data models
+    │   ├── User.php
+    │   └── Tweet.php
+    ├── views/                  # HTML templates
+    │   ├── home.php
+    │   ├── add.php
+    │   ├── profile.php
+    │   ├── auth/
+    │   ├── layout/
+    │   └── css/
+    └── uploads/                # User uploaded files
 ```
 
 ---
 
-## 🎯 Key Features Implemented:
+## 🔧 Recent Refactor (October 11, 2025)
 
-### Application Features:
-- ✅ Beautiful web interface with system status
-- ✅ RESTful API endpoints
-- ✅ Database abstraction layer
-- ✅ Helper functions for common tasks
-- ✅ Health check endpoint
-- ✅ Complete database schema (users, posts, likes, comments, follows)
+### What Changed:
+1. **✅ Replaced Old Application**: Moved `src/` to `src.backup/`, created symlink to `twitah-devsecops/src`
+2. **✅ Updated NGINX Config**: Changed document root from `/var/www/html/public` to `/var/www/html`
+3. **✅ Fixed Database Init Path**: Changed from `./database/init/` to `./database/`
+4. **✅ Added Missing Env Var**: Added `DB_ROOT_PASSWORD` to `.env`
+5. **✅ Removed Old Artifacts**: Deleted `src.backup/` directory
+6. **✅ Updated Documentation**: README.md now reflects symlink architecture
 
-### DevSecOps Features:
-- ✅ Multi-stage Docker builds (dev/prod)
-- ✅ Network isolation
-- ✅ Environment variable configuration
-- ✅ Production-ready PHP settings
-- ✅ Security headers
-- ✅ File upload restrictions
-- ✅ Prepared SQL statements
+### Key Fixes Made:
 
-### Documentation:
-- ✅ Comprehensive README
-- ✅ API documentation
-- ✅ Troubleshooting guide
-- ✅ Nginx Proxy Manager setup
-- ✅ Security recommendations
+### Key Fixes Made:
+
+**Old Structure (src.backup)**:
+- Had `public/` subdirectory with separate `api.php` and `index.php`
+- Used procedural PHP with includes
+- Static files in `public/`
+
+**New Structure (via symlink)**:
+- MVC architecture with single `index.php` router
+- Controllers, Models, Views separation
+- Static files in `views/css/`
+- Uploads in `src/uploads/`
+
+**Configuration Updates**:
+- NGINX root: `public/` → root directory
+- Database mount: `./database/init/` → `./database/`
+- Environment: Added `DB_ROOT_PASSWORD`
 
 ---
 
-## 🔐 Important Security Notes:
+## 🚀 Quick Start Guide
 
-⚠️ **CHANGE DEFAULT PASSWORDS** before production:
+### Prerequisites
 ```bash
-# Edit .env and change:
-DB_PASSWORD=devsecops-admin      # Change this!
-DB_ROOT_PASSWORD=devsecops-admin # Change this!
+# Ensure Docker is installed
+docker --version
+docker compose version
+
+# Ensure proxy-network exists
+docker network create proxy-network --subnet 172.20.0.0/16
+
+# Verify symlink
+ls -la src
+# Should show: src -> /home/student/twitah-devsecops/src
 ```
 
-⚠️ **Enable SSL** in Nginx Proxy Manager for production use
-
-⚠️ **Implement authentication** before deploying publicly
-
----
-
-## 📝 Quick Commands:
+### Starting the Application
 
 ```bash
-# Start services
-docker-compose up -d
+cd /home/student/sns-devsecops
 
-# View logs
-docker-compose logs -f
+# Clean start (if encountering database errors)
+sudo docker compose down
+sudo rm -rf db-data/*
 
-# Stop services
-docker-compose down
-
-# Rebuild after changes
-docker-compose build --no-cache
+# Build and start
+sudo docker compose build
+sudo docker compose up -d
 
 # Check status
-docker-compose ps
+sudo docker compose ps
 
-# Access PHP container
-docker-compose exec sns-dso-app sh
+# View logs
+sudo docker compose logs -f
+```
 
-# View NGINX error logs
-docker-compose logs web
+### Access the Application
 
-# Initialize database
-curl http://172.20.0.30/api/init
+1. **Direct IP Access**: http://172.20.0.30/
+2. **Via Nginx Proxy Manager**: http://sns.devsecops.local/
 
-# Test API
-curl http://172.20.0.30/api/health
+### Environment Variables (.env)
+
+```env
+DB_HOST=sns-dso-db
+DB_NAME=twita_db
+DB_USER=sns_user
+DB_PASSWORD=devsecops-admin
+DB_ROOT_PASSWORD=devsecops-admin
 ```
 
 ---
 
-## ✨ You're All Set!
+## 🔍 Common Issues & Solutions
 
-Your sns-devsecops project is now properly configured and ready to deploy! 
+### Issue 1: 500 Internal Server Error - Database Access Denied
 
-Check `README.md` for complete documentation.
+**Error Message**: 
+```
+Access denied for user 'sns_user'@'%' to database 'twita_db'
+```
 
-**Happy coding! 🚀**
+**Root Cause**: 
+The `db-data/` directory contains old database data with different credentials. MariaDB only runs init scripts when the data directory is empty.
+
+**Solution**:
+```bash
+sudo docker compose down
+sudo rm -rf db-data/*
+sudo docker compose up -d
+```
+
+### Issue 2: Symlink Broken or Not Found
+
+**Symptoms**: 
+- Container starts but shows empty directory
+- PHP errors about missing files
+
+**Solution**:
+```bash
+# Check symlink
+ls -la src
+
+# If broken, recreate
+rm src
+ln -s /home/student/twitah-devsecops/src src
+
+# Verify target exists
+ls -la /home/student/twitah-devsecops/src
+```
+
+### Issue 3: Changes in Dev Repo Not Reflecting
+
+**Symptoms**:
+- Edited files in twitah-devsecops but changes don't appear
+
+**Solution**:
+```bash
+# Verify symlink in container
+sudo docker compose exec sns-dso-app ls -la /var/www/html
+
+# Restart container to remount
+sudo docker compose restart sns-dso-app
+```
+
+### Issue 4: Permission Denied on Uploads
+
+**Symptoms**:
+- Cannot upload images
+- Permission errors in logs
+
+**Solution**:
+```bash
+# Fix permissions in dev repo
+cd /home/student/twitah-devsecops
+sudo chown -R www-data:www-data src/uploads/
+sudo chmod -R 755 src/uploads/
+```
+
+---
+
+## 🌐 Network Configuration
+
+### Docker Networks
+
+1. **proxy-network** (External)
+   - Subnet: 172.20.0.0/16
+   - Purpose: External access via Nginx Proxy Manager
+   - Web container IP: 172.20.0.30
+
+2. **sns-dso-internal** (Internal)
+   - Purpose: Internal communication between services
+   - Isolated from external access
+
+### Service Communication
+
+```
+Internet → Nginx Proxy Manager → 172.20.0.30:80 (nginx)
+                                      ↓
+                                 sns-dso-app:9000 (PHP-FPM)
+                                      ↓
+                                 sns-dso-db:3306 (MariaDB)
+```
+
+---
+
+## � Team Workflows
+
+### Development Team (Application Code)
+
+**Work Location**: `/home/student/twitah-devsecops`
+
+```bash
+cd /home/student/twitah-devsecops
+
+# Make changes to src/
+vim src/controllers/TweetController.php
+
+# Changes are immediately live in containers via symlink!
+
+# Commit and push
+git add .
+git commit -m "Updated tweet controller"
+git push origin main
+```
+
+### Infrastructure Team (Deployment)
+
+**Work Location**: `/home/student/sns-devsecops`
+
+```bash
+cd /home/student/sns-devsecops
+
+# Update infrastructure configs
+vim docker-compose.yaml
+vim nginx/conf.d/default.conf
+
+# Rebuild and deploy
+sudo docker compose down
+sudo docker compose build
+sudo docker compose up -d
+
+# Commit infrastructure changes
+git add .
+git commit -m "Updated nginx configuration"
+git push origin dev
+```
+
+---
+---
+
+## 📊 Service Details
+
+### Container: sns-dso-app (PHP-FPM 8.2)
+- **Base Image**: php:8.2-fpm-alpine
+- **Extensions**: pdo_mysql, mysqli, mbstring, zip, gd, intl, bcmath
+- **Port**: 9000 (internal)
+- **Volume**: `./src` (symlinked) → `/var/www/html`
+- **Config**: `docker/php/php.prod.ini`
+
+### Container: web (NGINX)
+- **Base Image**: nginx:alpine
+- **Port**: 80 (exposed to proxy-network)
+- **IP**: 172.20.0.30
+- **Config**: `nginx/conf.d/default.conf`
+- **Document Root**: `/var/www/html`
+
+### Container: sns-dso-db (MariaDB 10.11)
+- **Database**: twita_db
+- **User**: sns_user
+- **Port**: 3306 (internal only)
+- **Volume**: `./db-data` → `/var/lib/mysql`
+- **Init Script**: `./database/01-init-twitah.sql`
+
+---
+
+## 🗄️ Database Information
+
+### Initialization
+- **Script**: `database/01-init-twitah.sql`
+- **Run Time**: Only when `db-data/` is empty (first start)
+- **Contains**: Table schemas + seed data
+
+### Tables Created
+
+**users**:
+```sql
+- id (INT, AUTO_INCREMENT, PRIMARY KEY)
+- username (VARCHAR(50), UNIQUE)
+- email (VARCHAR(100), UNIQUE)
+- password (VARCHAR(255))
+- created_at (TIMESTAMP)
+```
+
+**tweets**:
+```sql
+- id (INT, AUTO_INCREMENT, PRIMARY KEY)
+- user_id (INT, FOREIGN KEY → users.id)
+- content (TEXT)
+- image_url (VARCHAR(255), NULL)
+- created_at (TIMESTAMP)
+```
+
+### Default Test Users
+- **alice** / password123 / alice@example.com
+- **bob** / qwerty / bob@example.com
+
+---
+
+## 🔒 Security Notes
+
+### Current Security Features
+✅ Network isolation (internal services not exposed)  
+✅ Environment-based configuration  
+✅ PHP security settings in php.prod.ini  
+✅ NGINX security headers  
+✅ Hidden files protection  
+✅ Separate database user (not root)  
+
+### Security Warnings
+⚠️ **Default passwords** in `.env` - Change for production!  
+⚠️ **Plain text passwords** in database - Implement proper hashing!  
+⚠️ **No authentication** on most routes - Add auth middleware!  
+⚠️ **File upload validation** missing - Implement file type checking!  
+⚠️ **SQL injection vulnerable** - Some queries not using prepared statements!  
+
+### Recommended for Production
+1. Change all default passwords
+2. Enable HTTPS via Nginx Proxy Manager
+3. Implement proper password hashing (bcrypt/argon2)
+4. Add authentication middleware
+5. Validate file uploads properly
+6. Use prepared statements everywhere
+7. Set up log monitoring
+8. Regular security updates
+
+---
+
+## � Additional Resources
+
+- **README.md**: Complete documentation with setup instructions
+- **REFACTOR_SUMMARY.md**: Details about the symlink refactor
+- **docker-compose.yaml**: Service definitions and configuration
+- **Dockerfile**: PHP-FPM image build instructions
+- **nginx/conf.d/default.conf**: NGINX virtual host configuration
+
+---
+
+## 🎯 Quick Reference Commands
+
+### Container Management
+```bash
+# Start services
+sudo docker compose up -d
+
+# Stop services
+sudo docker compose down
+
+# Restart specific service
+sudo docker compose restart sns-dso-app
+
+# View logs
+sudo docker compose logs -f
+
+# Check status
+sudo docker compose ps
+
+# Access container shell
+sudo docker compose exec sns-dso-app sh
+```
+
+### Database Management
+```bash
+# Access MySQL CLI
+sudo docker compose exec sns-dso-db mysql -u sns_user -pdevsecops-admin twita_db
+
+# Backup database
+sudo docker compose exec sns-dso-db mysqldump -u root -pdevsecops-admin twita_db > backup.sql
+
+# Restore database
+sudo docker compose exec -T sns-dso-db mysql -u root -pdevsecops-admin twita_db < backup.sql
+
+# Reset database (deletes all data!)
+sudo docker compose down
+sudo rm -rf db-data/*
+sudo docker compose up -d
+```
+
+### Development
+```bash
+# Watch application logs
+sudo docker compose logs -f sns-dso-app
+
+# Watch nginx logs
+sudo docker compose logs -f web
+
+# Edit application code (in dev repo)
+cd /home/student/twitah-devsecops
+vim src/controllers/TweetController.php
+
+# Edit infrastructure (in this repo)
+cd /home/student/sns-devsecops
+vim docker-compose.yaml
+```
+
+### Troubleshooting
+```bash
+# Check symlink
+ls -la /home/student/sns-devsecops/src
+
+# Verify database credentials
+sudo docker compose exec sns-dso-db env | grep MYSQL
+
+# Test PHP connection to database
+sudo docker compose exec sns-dso-app php -r "new mysqli('sns-dso-db', 'sns_user', 'devsecops-admin', 'twita_db') or die('Failed');"
+
+# Check network connectivity
+docker network inspect proxy-network
+docker network inspect sns-devsecops_sns-dso-internal
+```
+
+---
+
+## ✨ Summary
+
+Your sns-devsecops infrastructure is configured with:
+
+✅ **Symlinked application code** from twitah-devsecops repository  
+✅ **Automated database initialization** via init scripts  
+✅ **Network isolation** with proxy-network for external access  
+✅ **Production-ready** PHP and NGINX configurations  
+✅ **Comprehensive documentation** in README.md  
+✅ **Separate team workflows** for dev and infrastructure  
+
+**Current Status**: Ready to deploy!
+
+**Access**: http://172.20.0.30/ or http://sns.devsecops.local/ (via NPM)
+
+---
+
+**Last Updated**: October 11, 2025  
+**Infrastructure Repository**: sns-devsecops (dev branch)  
+**Application Repository**: twitah-devsecops
