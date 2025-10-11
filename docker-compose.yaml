@@ -10,12 +10,12 @@ services:
     container_name: sns-dso-app
     restart: unless-stopped
     volumes:
-      - ./src:/var/www/html
-      - ./storage:/var/www/html/storage
+      - ./src:/var/www/html:delegated
+      - ./storage:/var/www/html/storage:delegated
     environment:
-      - DB_HOST=sns-dso-db  
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
+      - DB_HOST=${DB_HOST:-sns-dso-db}
+      - DB_NAME=${DB_NAME:-twita_db}
+      - DB_USER=${DB_USER:-sns_user}
       - DB_PASSWORD=${DB_PASSWORD}
       # - REDIS_HOST=redis  
     networks:
@@ -23,6 +23,12 @@ services:
     depends_on:
       - sns-dso-db
       # - redis
+    healthcheck:
+      test: ["CMD-SHELL", "php -v || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   web:
     image: nginx:alpine
@@ -43,17 +49,24 @@ services:
     container_name: sns-dso-db
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
+      MYSQL_DATABASE: ${DB_NAME:-twita_db}
+      MYSQL_USER: ${DB_USER:-sns_user}
       MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     volumes:
       - ./db-data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d:ro
     networks:
       - sns-dso-internal  
     command: >
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
+      --max-connections=200
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   # redis:
   #   image: redis:7-alpine
@@ -65,6 +78,10 @@ services:
   #   networks:
   #     - sns-dso-internal  
 
+volumes:
+  db-data:
+    driver: local
+
 networks:
   proxy-network:
     external: true
@@ -72,4 +89,3 @@ networks:
   
   sns-dso-internal:
     driver: bridge
-    # ← No IPAM = automatic
