@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  sns-dso-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: sns-dso-app:${APP_VERSION:-latest}
+    container_name: sns-dso-app
+    restart: unless-stopped
+    volumes:
+      - ./src:/var/www/html
+      - ./storage:/var/www/html/storage
+    environment:
+      - DB_HOST=sns-dso-db  
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      # - REDIS_HOST=redis  
+    networks:
+      - sns-dso-internal  
+    depends_on:
+      - sns-dso-db
+      # - redis
+
+  web:
+    image: nginx:alpine
+    container_name: sns-dso-web
+    restart: unless-stopped
+    volumes:
+      - ./src:/var/www/html:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    networks:
+      proxy-network:
+        ipv4_address: 172.20.0.30  
+      sns-dso-internal:  
+    depends_on:
+      - sns-dso-app
+
+  sns-dso-db:
+    image: mariadb:10.11
+    container_name: sns-dso-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - ./db-data:/var/lib/mysql
+    networks:
+      - sns-dso-internal  
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: sns-dso-redis
+  #   restart: unless-stopped
+  #   command: redis-server --appendonly yes
+  #   volumes:
+  #     - ./redis-data:/data
+  #   networks:
+  #     - sns-dso-internal  
+
+networks:
+  proxy-network:
+    external: true
+    name: proxy-network
+  
+  sns-dso-internal:
+    driver: bridge
+    # ← No IPAM = automatic
