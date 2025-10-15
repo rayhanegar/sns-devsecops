@@ -1,703 +1,763 @@
-# 🚀 SNS-DSO - DevSecOps Microblogging Platform
+# SNS-DevSecOps - Microblogging Platform Infrastructure
 
-A Twitter-like microblogging application built with DevSecOps principles using Docker containerization.
+## Deskripsi Sistem
 
-## 📋 Table of Contents
-- [Architecture](#architecture)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Nginx Proxy Manager Setup](#nginx-proxy-manager-setup)
-- [Environment Configuration](#environment-configuration)
-- [API Endpoints](#api-endpoints)
-- [Database Schema](#database-schema)
-- [Development](#development)
-- [Production Deployment](#production-deployment)
-- [Security Considerations](#security-considerations)
-- [Troubleshooting](#troubleshooting)
+SNS-DevSecOps adalah platform microblogging berbasis web yang mengadopsi prinsip-prinsip DevSecOps dengan arsitektur containerized menggunakan Docker. Repositori ini (`sns-devsecops`) bertugas mengelola **infrastruktur dan deployment**, sementara kode aplikasi dikelola secara terpisah di repositori `rayhanegar/twitah-devsecops` oleh tim developer. Pemisahan ini memungkinkan separation of concerns antara infrastructure management dan application development, dengan integrasi melalui symbolic link untuk memastikan perubahan kode aplikasi dapat langsung tercermin dalam lingkungan deployment tanpa memerlukan rebuild container.
 
-## 🏗️ Architecture
+## Arsitektur Sistem
 
-This repository (`sns-devsecops`) handles the **infrastructure and deployment**, while the application code is maintained in a separate repository (`twitah-devsecops`) by the development team.
+### Topologi Infrastructure
+
+Deployment ini mengimplementasikan multi-tier architecture dengan tiga layer services yang terhubung melalui dua network layer yang terisolasi:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Development Repository (twitah-devsecops)              │
-│  → Application code (MVC architecture)                  │
-│  → Maintained by developer team                         │
-└────────────────┬────────────────────────────────────────┘
-                 │ (symlink)
-                 ▼
-┌─────────────────────────────────────────────────────────┐
-│  Infrastructure Repository (sns-devsecops)              │
-│  └─ src/ → symlink to twitah-devsecops/src             │
-└─────────────────┬───────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────┐
-│   Nginx Proxy Manager (External)       │
-│   Host: sns.devsecops.local             │
-│   → Routes to 172.20.0.30:80           │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────────┐
-│  NGINX Web Server (sns-dso-web)          │
-│  Network: proxy-network (172.20.0.30)    │
-│  Network: sns-dso-internal                │
-└──────────────┬───────────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────────┐
-│  PHP-FPM 8.2 (sns-dso-app)               │
-│  Network: sns-dso-internal                │
-│  Volume: src/ (symlinked from dev repo)  │
-└──────────────┬───────────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────────┐
-│  MariaDB 10.11 (sns-dso-db)              │
-│  Network: sns-dso-internal                │
-└──────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                    proxy-network (172.20.0.0/16)                   │
+│                       External Network Layer                        │
+│                                                                      │
+│  ┌──────────────────────────────────────────────────────────┐      │
+│  │          Nginx Proxy Manager (External Service)           │      │
+│  │                   IP: 172.20.0.10                          │      │
+│  │        Domain: sns.devsecops.local / sns.dso505.com       │      │
+│  │         - Reverse Proxy & Load Balancing                  │      │
+│  │         - SSL/TLS Termination (Let's Encrypt)             │      │
+│  │         - Access Control & Security Headers               │      │
+│  └──────────────────────┬───────────────────────────────────┘      │
+│                         │ HTTP/HTTPS                                │
+│                         │ Forward to: 172.20.0.30:80               │
+│                         ▼                                           │
+│  ┌──────────────────────────────────────────────────────────┐      │
+│  │              NGINX Web Server (sns-dso-web)               │      │
+│  │                   IP: 172.20.0.30                          │      │
+│  │         - Static File Serving                             │      │
+│  │         - PHP-FPM FastCGI Proxy                           │      │
+│  │         - Request Routing & URL Rewriting                 │      │
+│  │         - Access Logs & Error Logs                        │      │
+│  └──────────────────────┬───────────────────────────────────┘      │
+└─────────────────────────┼─────────────────────────────────────────┘
+                          │
+                          │ sns-dso-internal network
+                          │ (Bridge, Private Network)
+                          │
+            ┌─────────────┴─────────────┐
+            │                           │
+            ▼                           ▼
+┌───────────────────────────┐  ┌───────────────────────────┐
+│   PHP-FPM Application     │  │    MariaDB Database       │
+│     (sns-dso-app)         │  │     (sns-dso-db)          │
+│                           │  │                           │
+│  - PHP 8.2-FPM Alpine     │  │  - MariaDB 10.11         │
+│  - MVC Application Logic  │  │  - Database: twita_db     │
+│  - Session Management     │  │  - Character Set: utf8mb4 │
+│  - File Upload Handler    │  │  - Max Connections: 200   │
+│  - Database Connector     │  │  - Health Check Enabled   │
+│                           │  │                           │
+│  Volume Mounts:           │  │  Volume Mounts:           │
+│  - src/ (symlink)         │  │  - ./db-data              │
+│  - storage/               │  │  - ./database (init SQL)  │
+└───────────────────────────┘  └───────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│              Repository Integration Architecture                   │
+│                                                                      │
+│  ┌──────────────────────────────────────────────────────┐          │
+│  │  Development Repository (rayhanegar/twitah-devsecops)│          │
+│  │  /home/dso505/twitah-devsecops/                      │          │
+│  │                                                        │          │
+│  │  src/                                                 │          │
+│  │  ├── index.php        (Front Controller)             │          │
+│  │  ├── config/          (DB Configuration)              │          │
+│  │  ├── controllers/     (MVC Controllers)              │          │
+│  │  ├── models/          (Data Models)                  │          │
+│  │  ├── views/           (HTML Templates)               │          │
+│  │  └── uploads/         (User-uploaded Media)          │          │
+│  └──────────────────────┬───────────────────────────────┘          │
+│                         │                                           │
+│                         │ Symbolic Link                             │
+│                         │                                           │
+│                         ▼                                           │
+│  ┌──────────────────────────────────────────────────────┐          │
+│  │  Infrastructure Repository (sns-devsecops)           │          │
+│  │  /home/dso505/sns-devsecops/                         │          │
+│  │                                                        │          │
+│  │  src/ → /home/dso505/twitah-devsecops/src (symlink) │          │
+│  │  docker-compose.yaml                                  │          │
+│  │  Dockerfile                                           │          │
+│  │  nginx/                                               │          │
+│  │  database/                                            │          │
+│  │  docker/                                              │          │
+│  └──────────────────────────────────────────────────────┘          │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-### Repository Separation
+### Pemisahan Repositori
 
-- **`sns-devsecops`** (this repo): Infrastructure, Docker configs, deployment
-- **`twitah-devsecops`**: Application code (MVC PHP application)
-- **Symlink**: `./src` → `/home/student/twitah-devsecops/src`
+Arsitektur ini mengimplementasikan **separation of concerns** dengan dua repositori terpisah:
 
-## ✅ Prerequisites
+1. **`rayhanegar/twitah-devsecops`** (Development Repository)
+   - Mengelola source code aplikasi PHP dengan arsitektur MVC
+   - Berisi logic bisnis, controllers, models, dan views
+   - Maintained oleh development team
+   - Independent versioning untuk application code
+   - Lokasi: `/home/dso505/twitah-devsecops/`
 
-- Docker Engine 20.10+
-- Docker Compose 2.0+
-- Nginx Proxy Manager (running on `proxy-network`)
-- At least 2GB RAM available
-- Ports 80 and 443 available (if not using NPM)
+2. **`sns-devsecops`** (Infrastructure Repository - repositori ini)
+   - Mengelola Docker configuration dan orchestration
+   - Berisi Dockerfile, docker-compose.yaml, nginx config
+   - Maintained oleh DevOps/Infrastructure team
+   - Independent versioning untuk infrastructure changes
+   - Lokasi: `/home/dso505/sns-devsecops/`
 
-## 🚀 Quick Start
+3. **Integrasi via Symbolic Link**
+   - Path: `./src` → `/home/dso505/twitah-devsecops/src`
+   - Memungkinkan hot-reload: perubahan di development repo langsung terlihat
+   - Tidak memerlukan rebuild container saat update kode aplikasi
+   - Volume mount di Docker: `./src:/var/www/html:delegated`
 
-### 1. Clone and Setup
+## Services dan Komponen
 
-```bash
-cd /home/student/sns-devsecops
+### 1. PHP-FPM Application Container (`sns-dso-app`)
 
-# Verify the src symlink points to the development repository
-ls -l src
-# Should show: src -> /home/student/twitah-devsecops/src
-```
+**Image:** Custom build dari `php:8.2-fpm-alpine`
 
-### 2. Ensure proxy-network exists
+**Fungsi:**
+- Menjalankan aplikasi PHP dengan PHP-FPM (FastCGI Process Manager)
+- Memproses business logic dari aplikasi microblogging MVC
+- Menangani session management dan authentication
+- Memproses file uploads (gambar untuk tweets)
+- Melakukan koneksi ke database MariaDB untuk operasi CRUD
 
-```bash
-docker network create proxy-network --subnet 172.20.0.0/16
-```
+**Build Configuration:**
+- **Base Image:** `php:8.2-fpm-alpine` (lightweight Alpine Linux)
+- **Build Target:** `production` (multi-stage build)
+- **Installed Extensions:**
+  - `pdo_mysql`, `mysqli` - Database connectivity
+  - `mbstring` - Multi-byte string handling
+  - `gd`, `exif` - Image processing dan metadata
+  - `zip` - Archive handling
+  - `intl` - Internationalization
+  - `bcmath`, `pcntl` - Math dan process control
+- **Composer:** Installed untuk dependency management
 
-### 3. Configure Environment
+**Container Configuration:**
+- **Container Name:** `sns-dso-app`
+- **Restart Policy:** `unless-stopped`
+- **Network:** `sns-dso-internal` (isolated private network)
+- **User:** `www-data` (non-root user untuk security)
+- **Exposed Port:** 9000 (FastCGI)
 
-The `.env` file is already configured with default values:
+**Environment Variables:**
+- `DB_HOST`: Hostname database server (sns-dso-db)
+- `DB_NAME`: Nama database (twita_db)
+- `DB_USER`: Username database (sns_user)
+- `DB_PASSWORD`: Password database (dari .env file)
 
-```env
-DB_HOST=sns-dso-db
-DB_NAME=twita_db
-DB_USER=sns_user
-DB_PASSWORD=devsecops-admin
-DB_ROOT_PASSWORD=devsecops-admin
-```
+**Volume Mounts:**
+- `./src:/var/www/html:delegated` - Application code (symlinked dari twitah-devsecops)
+- `./storage:/var/www/html/storage:delegated` - Writable storage untuk logs, cache, uploads
 
-**⚠️ IMPORTANT:** Change these passwords in production!
+**Health Check:**
+- Command: `php -v` (verify PHP binary)
+- Interval: 30 detik
+- Timeout: 10 detik
+- Retries: 3 kali
+- Start Period: 40 detik
 
-### 4. Clean Database (If Starting Fresh)
+**Dependencies:**
+- Menunggu `sns-dso-db` ready sebelum start
 
-If you're starting fresh or encountering database permission errors, clean the old database data:
+### 2. NGINX Web Server Container (`web`)
 
-```bash
-# Stop containers if running
-sudo docker compose down
+**Image:** `nginx:alpine`
 
-# Remove old database data
-sudo rm -rf db-data/*
+**Fungsi:**
+- Bertindak sebagai reverse proxy untuk PHP-FPM application
+- Melayani static files (CSS, JavaScript, images) secara langsung
+- Melakukan URL rewriting untuk MVC routing
+- Meneruskan PHP requests ke PHP-FPM via FastCGI protocol
+- Logging akses dan error untuk monitoring
+- Implementasi caching untuk static assets
 
-# This ensures the init SQL script runs on first start
-```
+**Container Configuration:**
+- **Container Name:** `sns-dso-web`
+- **Restart Policy:** `unless-stopped`
+- **Networks:** 
+  - `proxy-network` dengan static IP 172.20.0.30 (external facing)
+  - `sns-dso-internal` (backend communication)
+- **Exposed Port:** 80 (HTTP internal)
 
-### 5. Build and Start Containers
+**Volume Mounts:**
+- `./src:/var/www/html:ro` - Application code (read-only untuk security)
+- `./nginx/conf.d:/etc/nginx/conf.d:ro` - NGINX configuration files (read-only)
 
-```bash
-# Build the Docker images
-sudo docker compose build
-
-# Start all services
-sudo docker compose up -d
-
-# Check container status
-sudo docker compose ps
-```
-
-### 6. Verify Installation
-
-```bash
-# Check the application
-curl http://172.20.0.30/
-
-# Or check via domain (after NPM setup)
-curl http://sns.devsecops.local/
-
-# View logs if there are issues
-sudo docker compose logs -f
-```
-
-### 7. Troubleshooting Database Errors
-
-If you see "Access denied for user 'sns_user'" errors:
-
-```bash
-# The database was initialized with old credentials
-# Solution: Remove db-data and restart
-
-sudo docker compose down
-sudo rm -rf db-data/*
-sudo docker compose up -d
-
-# The init script (database/01-init-twitah.sql) will run automatically
-```
-
-## 🌐 Nginx Proxy Manager Setup
-
-### Step 1: Access Nginx Proxy Manager
-
-1. Open Nginx Proxy Manager web interface (usually at `http://your-server:81`)
-2. Login with your credentials
-
-### Step 2: Add Proxy Host
-
-1. Navigate to **Hosts** → **Proxy Hosts**
-2. Click **Add Proxy Host**
-
-### Step 3: Configure Proxy Host
-
-**Details Tab:**
-- **Domain Names:** `sns.devsecops.local`
-- **Scheme:** `http`
-- **Forward Hostname/IP:** `172.20.0.30`
-- **Forward Port:** `80`
-- **Cache Assets:** ✅ Enabled
-- **Block Common Exploits:** ✅ Enabled
-- **Websockets Support:** ✅ Enabled (optional, for future features)
-
-**SSL Tab (Optional - for HTTPS on port 443):**
-- **SSL Certificate:** Request a new SSL Certificate or use existing
-- **Force SSL:** ✅ Enabled (recommended)
-- **HTTP/2 Support:** ✅ Enabled
-- **HSTS Enabled:** ✅ Enabled
-
-**Advanced Tab (Optional):**
+**NGINX Configuration Highlights:**
 ```nginx
-# Additional security headers
-add_header X-Frame-Options "SAMEORIGIN" always;
-add_header X-Content-Type-Options "nosniff" always;
-add_header X-XSS-Protection "1; mode=block" always;
-add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-# Rate limiting (optional)
-limit_req_zone $binary_remote_addr zone=sns_limit:10m rate=10r/s;
-limit_req zone=sns_limit burst=20 nodelay;
+server {
+    listen 80;
+    server_name sns.devsecops;
+    root /var/www/html;
+    
+    client_max_body_size 20M;  # Allow 20MB file uploads
+    
+    # MVC routing: rewrite all requests to index.php
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+    
+    # PHP-FPM FastCGI configuration
+    location ~ \.php$ {
+        fastcgi_pass sns-dso-app:9000;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        # Buffer configuration untuk performa
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+    }
+    
+    # Static files caching (365 days)
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2)$ {
+        expires 365d;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    # Security: deny access to hidden files
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
 ```
 
-### Step 4: DNS Configuration
+**Dependencies:**
+- Menunggu `sns-dso-app` ready sebelum start
 
-Add DNS entry or edit `/etc/hosts`:
+### 3. MariaDB Database Container (`sns-dso-db`)
 
+**Image:** `mariadb:10.11`
+
+**Fungsi:**
+- Menyimpan data persistent aplikasi (users, tweets, sessions)
+- Menjalankan database server dengan MariaDB engine
+- Melakukan initialization dengan SQL schema saat first run
+- Menyediakan health check untuk high availability
+- Menggunakan utf8mb4 character set untuk full Unicode support
+
+**Container Configuration:**
+- **Container Name:** `sns-dso-db`
+- **Restart Policy:** `unless-stopped`
+- **Network:** `sns-dso-internal` only (tidak terekspos ke external network)
+- **Exposed Port:** 3306 (MySQL protocol, internal only)
+
+**Environment Variables:**
+- `MYSQL_DATABASE`: twita_db (auto-created on first run)
+- `MYSQL_USER`: sns_user (non-root user untuk aplikasi)
+- `MYSQL_PASSWORD`: Password dari environment file
+- `MYSQL_ROOT_PASSWORD`: Root password untuk administrasi
+
+**Command Parameters:**
 ```bash
-# On your local machine or DNS server
-echo "172.20.0.1 sns.devsecops.local" | sudo tee -a /etc/hosts
+--character-set-server=utf8mb4           # Full Unicode support (emoji, special chars)
+--collation-server=utf8mb4_unicode_ci    # Case-insensitive Unicode collation
+--max-connections=200                     # Support untuk concurrent connections
 ```
 
-Replace `172.20.0.1` with your Nginx Proxy Manager host IP.
+**Volume Mounts:**
+- `./db-data:/var/lib/mysql` - Persistent database storage
+- `./database:/docker-entrypoint-initdb.d:ro` - Initialization SQL scripts (run once)
 
-### Step 5: Test Access
+**Health Check:**
+- Command: `healthcheck.sh --connect --innodb_initialized`
+- Interval: 30 detik
+- Timeout: 10 detik
+- Retries: 5 kali
+- Memastikan database service available dan InnoDB engine initialized
 
-```bash
-# Test the proxy
-curl -H "Host: sns.devsecops.local" http://172.20.0.30/
+**Database Initialization:**
+- File: `./database/01-init-twitah.sql`
+- Dieksekusi otomatis saat database pertama kali dibuat (db-data kosong)
+- Membuat schema dan seed data untuk development/testing
 
-# Or visit in browser
-http://sns.devsecops.local/
-```
+### 4. Redis Cache (Optional - Commented)
 
-## ⚙️ Environment Configuration
+**Image:** `redis:7-alpine`
 
-### Environment Variables
+Service Redis tersedia dalam konfigurasi namun di-nonaktifkan secara default. Dapat diaktifkan untuk:
+- Object caching untuk meningkatkan performa
+- Session storage
+- Queue management untuk background jobs
 
-Create or modify `.env` file:
+**Konfigurasi (jika diaktifkan):**
+- **Container Name:** `sns-dso-redis`
+- **Network:** `sns-dso-internal`
+- **Persistence:** AOF (Append-Only File) mode
+- **Volume:** `./redis-data:/data`
 
-```env
-# Database Configuration
-DB_HOST=sns-dso-db
-DB_NAME=twita_db
-DB_USER=sns_user
-DB_PASSWORD=your_secure_password_here
-DB_ROOT_PASSWORD=your_root_password_here
+## Database Schema
 
-# Application Configuration
-APP_VERSION=latest
-```
+### Struktur Database: `twita_db`
 
-### Volume Mounts
+Database menggunakan schema relasional dengan dua tabel utama yang mengimplementasikan relationship one-to-many antara users dan tweets.
 
-The following directories are mounted:
-- `./src` → `/var/www/html` (Application code - **symlinked from twitah-devsecops**)
-- `./storage` → `/var/www/html/storage` (Storage directory - not actively used by current app)
-- `./db-data` → `/var/lib/mysql` (Database persistence)
-- `./database` → `/docker-entrypoint-initdb.d` (Database initialization scripts)
-- `./nginx/conf.d` → `/etc/nginx/conf.d` (NGINX config)
+#### Tabel: `users`
 
-### Application Structure
+**Deskripsi:** Menyimpan informasi user yang terdaftar dalam sistem.
 
-The application code is maintained in the `twitah-devsecops` repository:
+| Kolom        | Tipe Data       | Constraint        | Deskripsi                                      |
+|--------------|-----------------|-------------------|------------------------------------------------|
+| `id`         | INT             | PRIMARY KEY, AUTO_INCREMENT | User ID unik                        |
+| `username`   | VARCHAR(50)     | UNIQUE, NOT NULL  | Username untuk login (unique per system)       |
+| `email`      | VARCHAR(100)    | UNIQUE, NOT NULL  | Email address user                             |
+| `password`   | VARCHAR(255)    | NOT NULL          | Password (hashed untuk security)               |
+| `role`       | VARCHAR(20)     | DEFAULT 'jelata'  | User role (jelata/admin untuk authorization)   |
+| `created_at` | TIMESTAMP       | DEFAULT CURRENT_TIMESTAMP | Waktu registrasi user                  |
 
-```
-twitah-devsecops/src/     (Development repository)
-├── index.php             # Main entry point with MVC routing
-├── config/
-│   └── config.php        # Database configuration
-├── controllers/
-│   ├── AuthController.php
-│   ├── TweetController.php
-│   └── ProfileController.php
-├── models/
-│   ├── User.php
-│   └── Tweet.php
-├── views/
-│   ├── home.php
-│   ├── add.php
-│   ├── profile.php
-│   ├── auth/
-│   ├── layout/
-│   └── css/
-└── uploads/              # User uploaded files
-```
+**Indexes:**
+- PRIMARY KEY pada `id`
+- UNIQUE INDEX pada `username`
+- UNIQUE INDEX pada `email`
 
-**Benefits of Symlink Approach:**
-- Developers work in `twitah-devsecops` repository
-- Infrastructure managed separately in `sns-devsecops`
-- Changes in dev repo reflect immediately in running containers
-- Clean separation of concerns
-
-## 📡 Application Routes
-
-The application uses MVC routing through `index.php?action=<action>`:
-
-### Authentication
-```bash
-# Show login form
-GET /?action=loginForm
-
-# Login
-POST /?action=login
-
-# Show registration form
-GET /?action=registerForm
-
-# Register
-POST /?action=register
-
-# Logout
-GET /?action=logout
-```
-
-### Tweets
-```bash
-# Home page (list tweets)
-GET /
-
-# Show add tweet form
-GET /?action=showAdd
-
-# Store new tweet
-POST /?action=storeTweet
-
-# Update tweet
-POST /?action=updateTweet
-
-# Delete tweet
-POST /?action=deleteTweet
-```
-
-### Profile
-```bash
-# View profile
-GET /?action=profile&username=<username>
-
-# Update username
-POST /?action=updateUsername
-```
-
-## 🗄️ Database Schema
-
-Database is automatically initialized from `database/01-init-twitah.sql` on first container start.
-
-### Tables:
-
-#### users
+**Sample Data:**
 ```sql
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) UNIQUE,
-    email VARCHAR(100) UNIQUE,
-    password VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+INSERT INTO users (username, email, password) VALUES
+('alice', 'alice@example.com', 'password123'),
+('bob', 'bob@example.com', 'qwerty');
 ```
 
-#### tweets
+**Catatan Keamanan:**
+- Password disimpan dalam plaintext dalam sample data (untuk demo/learning)
+- **Production:** harus menggunakan password hashing (bcrypt, Argon2)
+- Role 'jelata' adalah default user role (non-privileged)
+
+#### Tabel: `tweets`
+
+**Deskripsi:** Menyimpan konten tweets/posts yang dibuat oleh users.
+
+| Kolom        | Tipe Data       | Constraint        | Deskripsi                                      |
+|--------------|-----------------|-------------------|------------------------------------------------|
+| `id`         | INT             | PRIMARY KEY, AUTO_INCREMENT | Tweet ID unik                        |
+| `user_id`    | INT             | FOREIGN KEY, NOT NULL | Reference ke users.id (pemilik tweet)    |
+| `content`    | TEXT            | NOT NULL          | Isi konten tweet (text/message)                |
+| `image_url`  | VARCHAR(255)    | NULL              | Path ke image upload (optional)                |
+| `created_at` | TIMESTAMP       | DEFAULT CURRENT_TIMESTAMP | Waktu tweet dibuat                     |
+
+**Relationships:**
+- FOREIGN KEY `user_id` REFERENCES `users(id)`
+  - One user can have many tweets (1:N relationship)
+  - Cascade behavior: not specified (manual handling in application)
+
+**Indexes:**
+- PRIMARY KEY pada `id`
+- FOREIGN KEY INDEX pada `user_id`
+
+**Sample Data:**
 ```sql
-CREATE TABLE tweets (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT,
-    content TEXT,
-    image_url VARCHAR(255) NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
+INSERT INTO tweets (user_id, content) VALUES
+(1, 'Hello world!'),
+(2, 'Ini tweet dari Bob');
 ```
 
-### Default Test Data
-- **User 1**: alice (password: password123)
-- **User 2**: bob (password: qwerty)
-- Sample tweets from both users
+#### Entity Relationship Diagram (ERD)
 
-## 👨‍💻 Development
-
-### View Logs
-
-```bash
-# All services
-docker-compose logs -f
-
-# Specific service
-docker-compose logs -f sns-dso-app
-docker-compose logs -f web
-docker-compose logs -f sns-dso-db
+```
+┌─────────────────────────┐
+│        users            │
+├─────────────────────────┤
+│ PK  id (INT)            │
+│ UQ  username (VARCHAR)  │
+│ UQ  email (VARCHAR)     │
+│     password (VARCHAR)  │
+│     role (VARCHAR)      │
+│     created_at (TS)     │
+└───────────┬─────────────┘
+            │ 1
+            │
+            │ has many
+            │
+            │ N
+┌───────────┴─────────────┐
+│        tweets           │
+├─────────────────────────┤
+│ PK  id (INT)            │
+│ FK  user_id (INT)       │
+│     content (TEXT)      │
+│     image_url (VARCHAR) │
+│     created_at (TS)     │
+└─────────────────────────┘
 ```
 
-### Access Containers
+#### Database Initialization
 
+Database schema dan seed data diinisialisasi otomatis menggunakan MariaDB's entrypoint initialization mechanism:
+
+1. File SQL: `./database/01-init-twitah.sql`
+2. Execution: Saat container `sns-dso-db` pertama kali dibuat (db-data directory kosong)
+3. Process:
+   - Drop existing tables (jika ada)
+   - Create database `twita_db`
+   - Create tables `users` dan `tweets`
+   - Insert sample data untuk testing
+
+**PENTING:** Initialization scripts hanya dijalankan sekali. Jika ingin re-initialize:
 ```bash
-# PHP container
-docker-compose exec sns-dso-app sh
-
-# Database container
-docker-compose exec sns-dso-db mysql -u sns_user -p
-
-# NGINX container
-docker-compose exec web sh
-```
-
-### Restart Services
-
-```bash
-# Restart all
-docker-compose restart
-
-# Restart specific service
-docker-compose restart sns-dso-app
-```
-
-### Development Mode
-
-To use development mode with Xdebug:
-
-```bash
-# Build with development target
-docker-compose build --build-arg target=development sns-dso-app
-docker-compose up -d
-```
-
-## 🚢 Production Deployment
-
-### 1. Update Environment Variables
-
-```bash
-# Generate secure passwords
-DB_PASSWORD=$(openssl rand -base64 32)
-DB_ROOT_PASSWORD=$(openssl rand -base64 32)
-
-# Update .env file
-nano .env
-```
-
-### 2. Build Production Image
-
-```bash
-docker-compose build --no-cache
-```
-
-### 3. Deploy with Production Settings
-
-```bash
-# Start in detached mode
-docker-compose up -d
-
-# Check health
-docker-compose ps
-curl http://172.20.0.30/api/health
-```
-
-### 4. Enable HTTPS
-
-Configure SSL in Nginx Proxy Manager as described above.
-
-## 🔒 Security Considerations
-
-### ✅ Implemented Security Features
-
-1. **Network Isolation:** Internal services on `sns-dso-internal` network
-2. **Environment Variables:** Secrets stored in `.env` (not in code)
-3. **PHP Security:** 
-   - `expose_php = Off`
-   - `allow_url_include = Off`
-   - Session security enabled
-4. **NGINX Security:**
-   - Hidden files denied
-   - Sensitive files blocked
-   - Rate limiting ready
-5. **Database Security:**
-   - Separate user credentials
-   - Character set: utf8mb4
-   - Prepared statements for queries
-
-### ⚠️ Security Recommendations
-
-1. **Change Default Passwords:** Update `.env` before production
-2. **Enable SSL:** Configure HTTPS in Nginx Proxy Manager
-3. **Regular Updates:** Keep Docker images updated
-4. **Backup Database:** Implement regular backup strategy
-5. **Monitor Logs:** Set up log aggregation and monitoring
-6. **Firewall Rules:** Restrict access to necessary ports only
-7. **User Authentication:** Implement proper authentication (not included in base)
-
-## 🔧 Troubleshooting
-
-### 500 Internal Server Error - Database Access Denied
-
-**Error**: "Access denied for user 'sns_user'@'%' to database 'twita_db'"
-
-**Cause**: The database was initialized with old credentials or the `db-data` directory contains data from a previous setup.
-
-**Solution**:
-```bash
-# Stop all containers
-sudo docker compose down
-
-# Remove old database data (THIS WILL DELETE ALL DATABASE DATA!)
+docker-compose down
 sudo rm -rf db-data/*
-
-# Start containers - init script will run automatically
-sudo docker compose up -d
-
-# Verify logs
-sudo docker compose logs -f sns-dso-app
+docker-compose up -d
 ```
 
-### Container won't start
+## Network Architecture
 
-```bash
-# Check logs
-sudo docker compose logs
+### 1. proxy-network (External Network)
 
-# Check if ports are in use
-sudo netstat -tulpn | grep -E ':(80|443|3306|9000)'
+**Konfigurasi:**
+- **Network Name:** `proxy-network`
+- **Driver:** Bridge
+- **Subnet:** 172.20.0.0/16
+- **Gateway:** 172.20.0.1
+- **Type:** External (pre-created, shared across multiple projects)
 
-# Rebuild from scratch
-sudo docker compose down -v
-sudo docker compose build --no-cache
-sudo docker compose up -d
+**Purpose:**
+- Menghubungkan services dengan Nginx Proxy Manager
+- Memungkinkan reverse proxy dari external domain ke internal services
+- Shared network untuk multiple applications di infrastructure yang sama
+
+**Connected Services:**
+- Nginx Proxy Manager (172.20.0.10)
+- WordPress (172.20.0.20) - dari wordpress-dso deployment
+- SNS Web Server (172.20.0.30) - dari deployment ini
+
+**Labels:**
+```yaml
+com.devsecops.description: "Shared network for reverse proxy"
+com.devsecops.managed-by: "nginx-proxy-manager"
 ```
 
-### Database connection failed
+### 2. sns-dso-internal (Internal Network)
 
-```bash
-# Check if database is running
-sudo docker compose ps sns-dso-db
+**Konfigurasi:**
+- **Network Name:** `sns-dso-internal`
+- **Driver:** Bridge
+- **IPAM:** Automatic IP assignment
+- **Type:** Internal (created by docker-compose)
 
-# Check database logs
-sudo docker compose logs sns-dso-db
+**Purpose:**
+- Isolasi komunikasi antara application tier dan database tier
+- Security: database tidak terekspos ke external network
+- Private communication channel untuk service-to-service calls
 
-# Check database environment variables
-sudo docker compose exec sns-dso-db env | grep MYSQL
+**Connected Services:**
+- NGINX Web Server (`web`)
+- PHP-FPM Application (`sns-dso-app`)
+- MariaDB Database (`sns-dso-db`)
 
-# Test connection manually
-sudo docker compose exec sns-dso-app php -r "new mysqli('sns-dso-db', 'sns_user', 'devsecops-admin', 'twita_db') or die('Connection failed');"
+**Security Benefits:**
+- Database hanya accessible dari application container
+- Tidak ada direct external access ke database port 3306
+- Network segmentation sesuai principle of least privilege
+
+## Struktur Direktori
+
+```
+sns-devsecops/
+├── docker/                          # Container-specific configurations
+│   └── php/
+│       ├── php.dev.ini              # PHP development settings (debug enabled)
+│       └── php.prod.ini             # PHP production settings (optimized)
+│
+├── nginx/                           # NGINX web server configurations
+│   └── conf.d/
+│       └── default.conf             # Virtual host configuration untuk sns.devsecops
+│
+├── database/                        # Database initialization scripts
+│   └── 01-init-twitah.sql          # Schema creation dan seed data
+│
+├── src/ → symlink                   # ⚡ Symbolic link ke /home/dso505/twitah-devsecops/src
+│                                    # Berisi application code (MVC structure)
+│
+├── storage/                         # Writable storage directory (mounted ke container)
+│   ├── cache/                       # Application cache files
+│   ├── logs/                        # Application logs
+│   └── uploads/                     # User-uploaded files (images untuk tweets)
+│
+├── db-data/                         # ⚠️  Database persistent storage (gitignored)
+│   ├── mysql/                       # MySQL system database
+│   ├── performance_schema/          # Performance monitoring
+│   ├── sys/                         # System schema
+│   └── twita_db/                    # Application database
+│
+├── docker-compose.yaml              # Service orchestration configuration
+├── Dockerfile                       # PHP-FPM 8.2 custom image build
+├── .env                             # ⚠️  Environment variables dengan credentials (gitignored)
+├── .env.example                     # Template environment variables untuk setup
+├── .gitignore                       # Git ignore rules untuk sensitive files
+│
+├── README.md                        # Dokumentasi lengkap (file ini)
+├── SETUP_SUMMARY.md                 # Ringkasan setup dan configuration
+└── TROUBLESHOOTING.md               # Panduan troubleshooting untuk common issues
 ```
 
-### Symlink Issues
+### File dan Directory yang Tidak Di-commit
+
+Pastikan file-file berikut **TIDAK** di-commit ke version control (sudah ada di `.gitignore`):
+
+- `.env` - Environment variables dengan database credentials
+- `db-data/` - Database files dengan sensitive user data
+- `storage/logs/` - Application logs yang mungkin berisi sensitive information
+- `storage/uploads/` - User-uploaded files
+- `src/` - Symbolic link (destination directory di repository terpisah)
+
+## Panduan Instalasi dan Setup
+
+### Prasyarat
+
+1. **System Requirements:**
+   - Docker Engine versi 20.10 atau lebih baru
+   - Docker Compose versi 2.0 atau lebih baru
+   - Linux OS (tested pada Ubuntu 20.04/22.04)
+   - Minimum 2GB RAM available
+   - Minimum 10GB disk space
+
+2. **Network Requirements:**
+   - Network `proxy-network` (172.20.0.0/16) sudah dibuat
+   - Nginx Proxy Manager sudah terinstall dan berjalan
+   - Port 172.20.0.30:80 available (tidak bentrok dengan service lain)
+
+3. **Repository Requirements:**
+   - Repository `rayhanegar/twitah-devsecops` sudah di-clone
+   - Symbolic link `src` sudah dibuat dan pointing ke twitah-devsecops/src
+
+### Langkah 1: Clone Repositori
 
 ```bash
-# Verify symlink is correct
+# Clone infrastructure repository
+cd /home/dso505
+git clone <repository-url> sns-devsecops
+cd sns-devsecops
+
+# Verify repository structure
+ls -la
+```
+
+### Langkah 2: Clone Application Repository
+
+```bash
+# Clone application code repository
+cd /home/dso505
+git clone https://github.com/rayhanegar/twitah-devsecops.git
+
+# Verify application structure
+ls -la twitah-devsecops/src
+```
+
+### Langkah 3: Create Symbolic Link
+
+```bash
+# Masuk ke infrastructure repository
+cd /home/dso505/sns-devsecops
+
+# Hapus src directory jika sudah ada
+rm -rf src
+
+# Buat symbolic link ke application repository
+ln -s /home/dso505/twitah-devsecops/src src
+
+# Verify symlink
 ls -la src
-# Should show: src -> /home/student/twitah-devsecops/src
-
-# If symlink is broken, recreate it
-rm src
-ln -s /home/student/twitah-devsecops/src src
-
-# Verify target directory exists
-ls -la /home/student/twitah-devsecops/src
+# Output: src -> /home/dso505/twitah-devsecops/src
 ```
 
-### 502 Bad Gateway
+### Langkah 4: Konfigurasi Environment Variables
+
+1. Salin template environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit file `.env` dengan editor:
+   ```bash
+   nano .env
+   ```
+
+3. Konfigurasi credentials yang aman:
+   ```env
+   # Database Configuration
+   DB_HOST=sns-dso-db
+   DB_NAME=twita_db
+   DB_USER=sns_user
+   DB_PASSWORD=<strong_password_here>
+   DB_ROOT_PASSWORD=<strong_root_password_here>
+   
+   # Application Configuration
+   APP_VERSION=latest
+   ```
+
+**Best Practices untuk Password:**
+- Minimal 16 karakter
+- Kombinasi huruf besar, kecil, angka, dan simbol
+- Tidak menggunakan dictionary words
+- Berbeda antara DB_PASSWORD dan DB_ROOT_PASSWORD
+- Gunakan password manager atau generator
+
+### Langkah 5: Verify Network Proxy
 
 ```bash
-# Check if PHP-FPM is running
-sudo docker compose ps sns-dso-app
-
-# Check NGINX configuration
-sudo docker compose exec web nginx -t
-
-# Restart services
-sudo docker compose restart sns-dso-app web
-```
-
-### Nginx Proxy Manager can't reach container
-
-```bash
-# Verify proxy-network exists
+# Check apakah proxy-network sudah ada
 docker network ls | grep proxy-network
 
-# Check IP address
-docker inspect sns-dso-web | grep IPAddress
+# Jika belum ada, buat network baru
+docker network create proxy-network \
+  --subnet 172.20.0.0/16 \
+  --gateway 172.20.0.1 \
+  --label com.devsecops.description="Shared network for reverse proxy"
 
-# Verify network connection
+# Verify network details
 docker network inspect proxy-network
 ```
 
-### Permission Issues with Uploads
+### Langkah 6: Deploy Services
+
+1. Build dan start semua containers:
+   ```bash
+   docker-compose up -d --build
+   ```
+
+2. Monitor build dan startup process:
+   ```bash
+   docker-compose logs -f
+   ```
+
+3. Verify semua containers running:
+   ```bash
+   docker-compose ps
+   ```
+
+   Expected output:
+   ```
+   NAME          STATUS         PORTS
+   sns-dso-app   Up (healthy)   9000/tcp
+   sns-dso-web   Up             80/tcp
+   sns-dso-db    Up (healthy)   3306/tcp
+   ```
+
+4. Check health status:
+   ```bash
+   docker-compose ps --format json | jq '.[].Health'
+   ```
+
+### Langkah 7: Konfigurasi Nginx Proxy Manager
+
+1. Akses Nginx Proxy Manager web interface:
+   ```
+   URL: http://<server-ip>:81
+   Default credentials:
+   - Email: admin@example.com
+   - Password: changeme
+   ```
+
+2. **PENTING:** Change default password setelah first login
+
+3. Tambahkan Proxy Host baru:
+   - Navigasi ke: **Hosts** > **Proxy Hosts** > **Add Proxy Host**
+
+4. Konfigurasi Details Tab:
+   ```
+   Domain Names: sns.devsecops.local (atau sns.dso505.com)
+   Scheme: http
+   Forward Hostname / IP: 172.20.0.30
+   Forward Port: 80
+   Cache Assets: ✓ (enabled)
+   Block Common Exploits: ✓ (enabled)
+   Websockets Support: ✓ (enabled)
+   ```
+
+5. (Opsional) Konfigurasi SSL Tab untuk HTTPS:
+   - Untuk domain publik: gunakan **Let's Encrypt** certificate
+   - Untuk domain lokal: upload **Custom Certificate**
+   - Enable: Force SSL, HTTP/2 Support, HSTS Enabled
+
+6. Konfigurasi Advanced Tab (optional security headers):
+   ```nginx
+   # Security Headers
+   add_header X-Frame-Options "SAMEORIGIN" always;
+   add_header X-Content-Type-Options "nosniff" always;
+   add_header X-XSS-Protection "1; mode=block" always;
+   add_header Referrer-Policy "no-referrer-when-downgrade" always;
+   
+   # Rate Limiting (optional)
+   limit_req_zone $binary_remote_addr zone=sns_limit:10m rate=10r/s;
+   limit_req zone=sns_limit burst=20 nodelay;
+   ```
+
+7. Save dan test configuration
+
+### Langkah 8: Verify Deployment
+
+1. Test direct access ke NGINX container:
+   ```bash
+   curl -I http://172.20.0.30/
+   ```
+
+   Expected: HTTP 200 OK response
+
+2. Test melalui domain dengan hosts file (untuk local testing):
+   ```bash
+   sudo nano /etc/hosts
+   ```
+
+   Tambahkan entry:
+   ```
+   <server-ip>  sns.devsecops.local
+   ```
+
+3. Test akses via browser:
+   ```
+   http://sns.devsecops.local
+   ```
+
+4. Verify database connectivity:
+   ```bash
+   docker-compose exec sns-dso-db mysql -u sns_user -p${DB_PASSWORD} -e "SHOW DATABASES;"
+   ```
+
+5. Check application logs:
+   ```bash
+   docker-compose logs -f sns-dso-app
+   docker-compose logs -f web
+   docker-compose logs -f sns-dso-db
+   ```
+
+### Langkah 9: Initialize Application Data
+
+Jika perlu re-initialize database dengan fresh data:
 
 ```bash
-# The uploads directory is in the symlinked src
-# Check permissions in the development repository
-ls -la /home/student/twitah-devsecops/src/uploads/
+# Stop containers
+docker-compose down
 
-# If needed, fix permissions (run from dev repo)
-cd /home/student/twitah-devsecops
-sudo chown -R www-data:www-data src/uploads/
-sudo chmod -R 755 src/uploads/
-```
-
-### Changes in Dev Repo Not Reflecting
-
-```bash
-# Changes should reflect immediately due to symlink
-# If not, check if containers are using the symlink
-sudo docker compose exec sns-dso-app ls -la /var/www/html
-
-# Restart containers to ensure fresh mount
-sudo docker compose restart sns-dso-app
-```
-
-## 📝 Maintenance
-
-### Backup Database
-
-```bash
-# Backup
-sudo docker compose exec sns-dso-db mysqldump -u root -pdevsecops-admin twita_db > backup-$(date +%Y%m%d).sql
-
-# Restore
-sudo docker compose exec -T sns-dso-db mysql -u root -pdevsecops-admin twita_db < backup-20251011.sql
-```
-
-### Update Application Code
-
-**Development Team Workflow:**
-```bash
-# Developers work in the twitah-devsecops repository
-cd /home/student/twitah-devsecops
-
-# Make changes to src/
-# Changes are immediately available in running containers via symlink
-
-# Commit and push
-git add .
-git commit -m "Your changes"
-git push origin main
-```
-
-**Infrastructure Team Workflow:**
-```bash
-# Update infrastructure configs in sns-devsecops
-cd /home/student/sns-devsecops
-
-# Make changes to docker-compose.yaml, Dockerfile, nginx configs, etc.
-
-# Rebuild and restart
-sudo docker compose down
-sudo docker compose build
-sudo docker compose up -d
-```
-
-### Clean Restart
-
-```bash
-# Complete clean restart (WARNING: Deletes all data!)
-sudo docker compose down -v
+# Remove database data
 sudo rm -rf db-data/*
 
-# Start fresh
-sudo docker compose up -d
+# Start containers (akan auto-run init SQL)
+docker-compose up -d
+
+# Verify initialization
+docker-compose exec sns-dso-db mysql -u sns_user -p${DB_PASSWORD} twita_db -e "SELECT * FROM users;"
 ```
 
-## 📞 Support
+## Referensi
 
-For issues and questions:
-- Check logs: `sudo docker compose logs -f`
-- Review NGINX config: `nginx/conf.d/default.conf`
-- Review PHP config: `docker/php/php.prod.ini`
-- Check database init: `database/01-init-twitah.sql`
-- Verify symlink: `ls -la src`
-- Check REFACTOR_SUMMARY.md for recent changes
+### Documentation
 
-## 📂 Repository Structure
+- [Docker Compose Documentation](https://docs.docker.com/compose/)
+- [PHP Official Docker Images](https://hub.docker.com/_/php)
+- [NGINX Official Documentation](https://nginx.org/en/docs/)
+- [MariaDB Documentation](https://mariadb.com/kb/en/documentation/)
+- [Nginx Proxy Manager](https://nginxproxymanager.com/guide/)
 
-### Infrastructure Repository (sns-devsecops)
-```
-sns-devsecops/
-├── docker/                  # Docker configurations
-│   └── php/
-│       ├── php.dev.ini
-│       └── php.prod.ini
-├── nginx/                   # NGINX configurations
-│   └── conf.d/
-│       └── default.conf
-├── database/                # Database initialization
-│   └── 01-init-twitah.sql
-├── src/ → symlink           # Symlink to twitah-devsecops/src
-├── storage/                 # Storage directory (not actively used)
-├── db-data/                 # Database persistence (gitignored)
-├── docker-compose.yaml      # Service orchestration
-├── Dockerfile               # PHP-FPM image definition
-├── .env                     # Environment variables
-├── README.md                # This file
-├── SETUP_SUMMARY.md         # Setup documentation
-└── REFACTOR_SUMMARY.md      # Recent refactor notes
-```
+### Related Repositories
 
-### Development Repository (twitah-devsecops)
-```
-twitah-devsecops/
-└── src/                     # Application code
-    ├── index.php            # MVC router
-    ├── config/              # Configuration
-    ├── controllers/         # Business logic
-    ├── models/              # Data models
-    ├── views/               # HTML templates
-    └── uploads/             # User uploads
-```
-
-## 📄 License
-
-This project is for educational and DevSecOps training purposes.
+- **Application Code:** [rayhanegar/twitah-devsecops](https://github.com/rayhanegar/twitah-devsecops)
+- **Infrastructure:** `sns-devsecops` (repositori ini)
 
 ---
 
-**Built with ❤️ for DevSecOps Learning**
+**Terakhir Diperbarui:** Oktober 2025  
+**Version:** 1.0.0  
+**License:** Educational Use Only

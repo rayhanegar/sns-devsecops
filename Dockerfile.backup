@@ -46,12 +46,16 @@ FROM base AS production
 # Copy production php.ini
 COPY ./docker/php/php.prod.ini /usr/local/etc/php/php.ini
 
-# Create a composer.json file if it doesn't exist (will be overridden by volume mount)
-RUN echo '{"require": {}}' > /var/www/html/composer.json
+# Copy application files
+COPY --chown=www-data:www-data ./src /var/www/html
 
-# Set permissions for the working directory
+# Install composer dependencies
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+# Set permissions
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html
+    && find /var/www/html -type d -exec chmod 755 {} \; \
+    && find /var/www/html -type f -exec chmod 644 {} \;
 
 USER www-data
 
