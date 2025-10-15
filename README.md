@@ -13,28 +13,28 @@ Deployment ini mengimplementasikan multi-tier architecture dengan tiga layer ser
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │                    proxy-network (172.20.0.0/16)                   │
-│                       External Network Layer                        │
-│                                                                      │
+│                       External Network Layer                       │
+│                                                                    │
 │  ┌──────────────────────────────────────────────────────────┐      │
-│  │          Nginx Proxy Manager (External Service)           │      │
-│  │                   IP: 172.20.0.10                          │      │
-│  │        Domain: sns.devsecops.local / sns.dso505.com       │      │
-│  │         - Reverse Proxy & Load Balancing                  │      │
-│  │         - SSL/TLS Termination (Let's Encrypt)             │      │
-│  │         - Access Control & Security Headers               │      │
+│  │          Nginx Proxy Manager (External Service)          │      │
+│  │                   IP: 172.20.0.10                        │      │
+│  │        Domain: sns.devsecops.local / sns.dso505.com      │      │
+│  │         - Reverse Proxy & Load Balancing                 │      │
+│  │         - SSL/TLS Termination (Let's Encrypt)            │      │
+│  │         - Access Control & Security Headers              │      │
 │  └──────────────────────┬───────────────────────────────────┘      │
-│                         │ HTTP/HTTPS                                │
+│                         │ HTTP/HTTPS                               │
 │                         │ Forward to: 172.20.0.30:80               │
-│                         ▼                                           │
+│                         ▼                                          │
 │  ┌──────────────────────────────────────────────────────────┐      │
-│  │              NGINX Web Server (sns-dso-web)               │      │
-│  │                   IP: 172.20.0.30                          │      │
-│  │         - Static File Serving                             │      │
-│  │         - PHP-FPM FastCGI Proxy                           │      │
-│  │         - Request Routing & URL Rewriting                 │      │
-│  │         - Access Logs & Error Logs                        │      │
+│  │              NGINX Web Server (sns-dso-web)              │      │
+│  │                   IP: 172.20.0.30                        │      │
+│  │         - Static File Serving                            │      │
+│  │         - PHP-FPM FastCGI Proxy                          │      │
+│  │         - Request Routing & URL Rewriting                │      │
+│  │         - Access Logs & Error Logs                       │      │
 │  └──────────────────────┬───────────────────────────────────┘      │
-└─────────────────────────┼─────────────────────────────────────────┘
+└─────────────────────────┼───────────────────────────────────-──────┘
                           │
                           │ sns-dso-internal network
                           │ (Bridge, Private Network)
@@ -46,7 +46,7 @@ Deployment ini mengimplementasikan multi-tier architecture dengan tiga layer ser
 │   PHP-FPM Application     │  │    MariaDB Database       │
 │     (sns-dso-app)         │  │     (sns-dso-db)          │
 │                           │  │                           │
-│  - PHP 8.2-FPM Alpine     │  │  - MariaDB 10.11         │
+│  - PHP 8.2-FPM Alpine     │  │  - MariaDB 10.11          │
 │  - MVC Application Logic  │  │  - Database: twita_db     │
 │  - Session Management     │  │  - Character Set: utf8mb4 │
 │  - File Upload Handler    │  │  - Max Connections: 200   │
@@ -59,33 +59,33 @@ Deployment ini mengimplementasikan multi-tier architecture dengan tiga layer ser
 
 ┌────────────────────────────────────────────────────────────────────┐
 │              Repository Integration Architecture                   │
-│                                                                      │
+│                                                                    │
 │  ┌──────────────────────────────────────────────────────┐          │
 │  │  Development Repository (rayhanegar/twitah-devsecops)│          │
 │  │  /home/dso505/twitah-devsecops/                      │          │
-│  │                                                        │          │
-│  │  src/                                                 │          │
+│  │                                                      │          │
+│  │  src/                                                │          │
 │  │  ├── index.php        (Front Controller)             │          │
-│  │  ├── config/          (DB Configuration)              │          │
+│  │  ├── config/          (DB Configuration)             │          │
 │  │  ├── controllers/     (MVC Controllers)              │          │
 │  │  ├── models/          (Data Models)                  │          │
 │  │  ├── views/           (HTML Templates)               │          │
 │  │  └── uploads/         (User-uploaded Media)          │          │
 │  └──────────────────────┬───────────────────────────────┘          │
-│                         │                                           │
-│                         │ Symbolic Link                             │
-│                         │                                           │
-│                         ▼                                           │
+│                         │                                          │
+│                         │ Symbolic Link                            │
+│                         │                                          │
+│                         ▼                                          │
 │  ┌──────────────────────────────────────────────────────┐          │
 │  │  Infrastructure Repository (sns-devsecops)           │          │
 │  │  /home/dso505/sns-devsecops/                         │          │
-│  │                                                        │          │
-│  │  src/ → /home/dso505/twitah-devsecops/src (symlink) │          │
-│  │  docker-compose.yaml                                  │          │
-│  │  Dockerfile                                           │          │
-│  │  nginx/                                               │          │
-│  │  database/                                            │          │
-│  │  docker/                                              │          │
+│  │                                                      │          │
+│  │  src/ → /home/dso505/twitah-devsecops/src (symlink)  │          │
+│  │  docker-compose.yaml                                 │          │
+│  │  Dockerfile                                          │          │
+│  │  nginx/                                              │          │
+│  │  database/                                           │          │
+│  │  docker/                                             │          │
 │  └──────────────────────────────────────────────────────┘          │
 └────────────────────────────────────────────────────────────────────┘
 ```
