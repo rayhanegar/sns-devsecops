@@ -88,4 +88,13 @@ networks:
     name: proxy-network
   
   sns-dso-internal:
+    name: sns-dso-internal
     driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.22.0.0/16
+          gateway: 172.22.0.1
+    labels:
+      com.devsecops.description: "Internal network for SNS DSO services"
+      com.devsecops.managed-by: "sns-dso-app-internal" 
